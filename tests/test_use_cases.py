@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from csv_app.entities import ExtractedPage, GraphPoint, TextBlock
+from csv_app.entities import ExtractedPage, GraphPoint, TextBlock, Table, DocumentStructure
 from csv_app.use_cases import CsvReportGenerator, PdfContentExtractionService
 
 
@@ -23,6 +23,22 @@ class StubGraphExtractor:
         return [GraphPoint(page_number=page_number, graph_index=1, x=10.0, y=20.0)]
 
 
+class StubTableExtractor:
+    def extract_tables(self, pdf_path: Path) -> list[Table]:
+        return []
+
+
+class StubMetadataExtractor:
+    def extract_metadata(self, pdf_path: Path):
+        from csv_app.entities import DocumentMetadata
+        return DocumentMetadata()
+
+
+class StubStructureExtractor:
+    def extract_structure(self, pdf_path: Path) -> list[DocumentStructure]:
+        return []
+
+
 class StubExporter:
     def __init__(self) -> None:
         self.rows = []
@@ -38,6 +54,9 @@ def test_pdf_content_extraction_service_combines_text_and_graphs() -> None:
         text_extractor=StubTextExtractor(),
         image_converter=StubImageConverter(),
         graph_extractor=StubGraphExtractor(),
+        table_extractor=StubTableExtractor(),
+        metadata_extractor=StubMetadataExtractor(),
+        structure_extractor=StubStructureExtractor(),
     )
     pages = extractor.extract(Path("dummy.pdf"))
 
@@ -53,15 +72,18 @@ def test_csv_report_generator_outputs_text_and_graph_rows(tmp_path: Path) -> Non
         page_number=1,
         text_block=TextBlock(page_number=1, text="Texto de prueba"),
         graph_points=[GraphPoint(page_number=1, graph_index=1, x=12.34, y=56.78, x_label="X", y_label="Y")],
+        tables=[],
+        structure=[],
     )
     exporter = StubExporter()
-    report_generator = CsvReportGenerator(exporter=exporter)
+    report_generator = CsvReportGenerator(exporter=exporter, metadata_extractor=StubMetadataExtractor())
 
     report_generator.generate([page], output_path=tmp_path / "output.csv")
 
     assert exporter.last_path == tmp_path / "output.csv"
     assert exporter.rows[0]["type"] == "text"
     assert exporter.rows[0]["value"] == "Texto de prueba"
-    assert exporter.rows[1]["type"] == "graph_point"
-    assert exporter.rows[1]["x"] == 12.34
-    assert exporter.rows[1]["y_label"] == "Y"
+    assert any(row["type"] == "graph_point" for row in exporter.rows)
+    graph_point_row = next(row for row in exporter.rows if row["type"] == "graph_point")
+    assert graph_point_row["x"] == 12.34
+    assert graph_point_row["y_label"] == "Y"

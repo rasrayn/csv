@@ -1,11 +1,14 @@
 # PDF a CSV
 
-Esta aplicación convierte un PDF en un CSV extrayendo dos tipos de datos:
+Esta aplicación convierte un PDF en un CSV extrayendo múltiples tipos de datos:
 
-1. Texto de cada página.
-2. Datos de gráficos detectados en cada página.
+1. **Texto** de cada página
+2. **Gráficos** detectados en imágenes (puntos, etiquetas)
+3. **Tablas** incrustadas en el PDF
+4. **Metadatos** (título, autor, fechas)
+5. **Estructura del documento** (títulos, párrafos, niveles)
 
-Está diseñada para ser fácil de usar y entender, con una estructura modular basada en composición y principios de Clean Architecture.
+Optimizada para informes científicos sobre envejecimiento activo y documentos similares. La app está diseñada para ser modular y fácil de extender, basada en composición y principios de Clean Architecture.
 
 ---
 
@@ -13,31 +16,31 @@ Está diseñada para ser fácil de usar y entender, con una estructura modular b
 
 La app se divide en capas y responsabilidades:
 
-- `main.py`: punto de entrada. Recibe las rutas del PDF y del CSV, arma la aplicación y ejecuta el proceso.
-- `csv_app/entities.py`: define los datos que utiliza la aplicación, como `TextBlock`, `GraphPoint` y `ExtractedPage`.
-- `csv_app/ports.py`: define los contratos (protocolos) que deben cumplir los componentes técnicos.
-- `csv_app/adapters.py`: implementa los adaptadores concretos que trabajan con PDF, imágenes, OCR y CSV.
-- `csv_app/use_cases.py`: contiene la lógica principal de extracción y la generación del CSV.
-- `csv_app/composition.py`: conecta todos los componentes entre sí.
+- `main.py`: punto de entrada. Recibe rutas del PDF y CSV, arma la app y ejecuta.
+- `csv_app/entities.py`: define modelos de dominio (`TextBlock`, `GraphPoint`, `Table`, `DocumentMetadata`, `DocumentStructure`).
+- `csv_app/ports.py`: define contratos (protocolos) que cumplen los componentes.
+- `csv_app/adapters.py`: implementa adaptadores concretos para PDF, imágenes, OCR, tablas, metadatos y CSV.
+- `csv_app/use_cases.py`: contiene lógica de extracción y generación del CSV.
+- `csv_app/composition.py`: conecta todos los componentes.
 
-Con esta organización, cada parte se encarga de una sola responsabilidad y se puede cambiar o mejorar sin alterar el resto.
+Cada parte se encarga de una responsabilidad y se puede reemplazar sin afectar el resto.
 
 ---
 
 ## Requisitos
 
-La app está escrita en Python 3 y usa estas librerías:
+Python 3 y librerías:
 
-- `pdfplumber` para extraer texto del PDF.
-- `pdf2image` para convertir páginas PDF en imágenes.
-- `pytesseract` para leer texto en imágenes (OCR).
-- `opencv-python-headless` para detectar puntos en gráficos.
-- `pandas` para generar el archivo CSV.
-- `Pillow` para manejar imágenes.
+- `pdfplumber` — extrae texto del PDF
+- `pdf2image` — convierte páginas a imágenes
+- `pytesseract` — OCR de etiquetas en gráficos
+- `opencv-python-headless` — detecta puntos en gráficos
+- `camelot-py` — extrae tablas
+- `pandas` — genera CSV
+- `Pillow` — maneja imágenes
+- `pytest` — tests unitarios
 
-Además, en Windows necesitas instalar Poppler si no está disponible en el sistema.
-
----
+En Windows necesitas instalar Poppler.
 
 ## Instalación
 
@@ -78,63 +81,55 @@ python main.py "C:\ruta\al\archivo.pdf" "C:\ruta\de\salida.csv"
 
 ## Qué genera el CSV
 
-El CSV tiene filas de dos tipos:
+El CSV contiene filas de varios tipos:
 
-- `text`: contiene el texto extraído de cada página.
-- `graph_point`: contiene los puntos detectados en gráficos dentro de la página.
+- `metadata`: metadatos del PDF (título en `x_label`, autor en `y_label`)
+- `structure`: estructura del documento (títulos/párrafos con nivel en `x`)
+- `table`: datos de tablas (encabezados en `x_label`, fila de datos en `value`)
+- `text`: texto extraído de cada página
+- `graph_point`: puntos detectados en gráficos
 
-Cada fila tiene estas columnas:
+Columnas en el CSV:
 
-- `type`: `text` o `graph_point`
+- `type`: tipo de fila (`metadata`, `structure`, `table`, `text`, `graph_point`)
 - `page`: número de página
-- `graph_index`: índice del punto en el gráfico
-- `value`: el texto extraído (solo para filas `text`)
-- `x`: coordenada X del punto del gráfico
-- `y`: coordenada Y del punto del gráfico
-- `x_label`: texto del eje X detectado en la imagen
-- `y_label`: texto del eje Y detectado en la imagen
+- `graph_index`: índice del elemento (tabla, gráfico)
+- `value`: contenido (texto, datos de tabla)
+- `x`: coordenada X o nivel de estructura
+- `y`: coordenada Y
+- `x_label`: etiqueta eje X de gráfico / encabezados de tabla / tipo de contenido
+- `y_label`: etiqueta eje Y de gráfico
 
 ---
 
 ## Ejemplo
 
-Si el PDF tiene 2 páginas y la primera contiene un gráfico, el CSV puede tener este aspecto:
+Si el PDF tiene 2 páginas con metadatos, estructura, tabla y gráfico, el CSV puede verse así:
 
-| type       | page | graph_index | value                    | x     | y     | x_label | y_label |
-|------------|------|-------------|--------------------------|-------|-------|---------|---------|
-| text       | 1    |             | Texto de la página 1     |       |       |         |         |
-| graph_point| 1    | 1           |                          | 152.4 | 98.7  | Tiempo  | Ventas  |
-| graph_point| 1    | 2           |                          | 279.7 | 120.3 | Tiempo  | Ventas  |
-| text       | 2    |             | Texto de la página 2     |       |       |         |         |
-
----
-
-## Notas
-
-- La extracción de texto funciona bien con PDFs que contienen texto real. Si el PDF solo tiene imágenes escaneadas, el texto extraído puede ser limitado.
-- La detección de gráficos es básica: busca puntos y etiquetas en la imagen. Dependiendo del diseño del gráfico, puede requerir ajustes.
-- La app está diseñada para ser extensible: puedes cambiar el adaptador de gráficos o el exportador sin tocar la lógica de uso.
+| type       | page | graph_index | value                    | x     | y     | x_label    | y_label |
+|------------|------|-------------|--------------------------|-------|-------|------------|---------|
+| metadata   |      |             |                          |       |       | Envejecimiento Activo | Dr. García |
+| structure  | 1    |             | Introducción             | 0     |       | heading    |         |
+| table      | 1    | 1           | Dato1\|Dato2             | 0     |       | Col1\|Col2 |         |
+| text       | 1    |             | Texto de la página 1     |       |       |            |         |
+| graph_point| 1    | 1           |                          | 152.4 | 98.7  | Edad       | Actividad |
+| structure  | 2    |             | Conclusiones             | 0     |       | heading    |         |
+| text       | 2    |             | Texto de la página 2     |       |       |            |         |
 
 ---
 
-## Estructura de archivos
+## Mejoras implementadas
 
-- `main.py`
-- `csv_app/__init__.py`
-- `csv_app/composition.py`
-- `csv_app/entities.py`
-- `csv_app/ports.py`
-- `csv_app/adapters.py`
-- `csv_app/use_cases.py`
-- `requirements.txt`
+- ✅ Extracción de tablas con Camelot
+- ✅ Extracción de metadatos (título, autor, fechas)
+- ✅ Estructura del documento (niveles de encabezados)
+- ✅ Suite de tests completa (unitarios + integración)
+- ✅ Arquitectura modular con composición (sin herencia)
 
----
+## Posibles mejoras futuras
 
-## ¿Necesitas más mejoras?
-
-Si quieres, puedo ayudarte a:
-
-- agregar tests automáticos,
-- mejorar la detección de gráficos,
-- extraer tablas del PDF,
-- o generar un CSV con estructura más avanzada.
+- Mejorar detección de gráficos (círculares, dispersión, etc.)
+- OCR mejorado para etiquetas complejas
+- Exportar a múltiples formatos (JSON, Excel)
+- CLI interactiva con progreso
+- Caché para documentos procesados

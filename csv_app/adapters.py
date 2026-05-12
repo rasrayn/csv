@@ -7,12 +7,13 @@ import numpy as np
 import pandas as pd
 import pdfplumber
 import pytesseract
+import camelot
 from pdf2image import convert_from_path
 from PIL import Image
 
 TESSERACT_AVAILABLE = shutil.which("tesseract") is not None
 
-from .entities import GraphPoint, TextBlock
+from .entities import GraphPoint, TextBlock, Table, DocumentMetadata, DocumentStructure
 
 
 class PdfTextExtractor:
@@ -97,3 +98,63 @@ class PandasCsvExporter:
     def export(self, rows: list[dict], output_path: Path) -> None:
         df = pd.DataFrame(rows)
         df.to_csv(output_path, index=False, quoting=csv.QUOTE_MINIMAL)
+
+
+class TableExtractor:
+    def extract_tables(self, pdf_path: Path) -> list[Table]:
+        tables: list[Table] = []
+        try:
+            camelot_tables = camelot.read_pdf(str(pdf_path), pages="all", flavor="lattice")
+            for table_index, table in enumerate(camelot_tables, start=1):
+                df = table.df
+                page_number = int(table.page) if hasattr(table, "page") else 1
+                headers = list(df.iloc[0]) if len(df) > 0 else []
+                rows_data = [list(row) for row in df.iloc[1:].values] if len(df) > 1 else []
+                tables.append(
+                    Table(page_number=page_number, table_index=table_index, headers=headers, rows=rows_data)
+                )
+        except Exception:
+            pass
+        return tables
+
+
+class MetadataExtractor:
+    def extract_metadata(self, pdf_path: Path) -> DocumentMetadata:
+        try:
+            with pdfplumber.open(str(pdf_path)) as pdf:
+                meta = pdf.metadata or {}
+                return DocumentMetadata(
+                    title=meta.get("/Title"),
+                    author=meta.get("/Author"),
+                    creation_date=meta.get("/CreationDate"),
+                    modification_date=meta.get("/ModDate"),
+                )
+        except Exception:
+            return DocumentMetadata()
+
+
+class StructureExtractor:
+    def extract_structure(self, pdf_path: Path) -> list[DocumentStructure]:
+        structure: list[DocumentStructure] = []
+        try:
+            with pdfplumber.open(str(pdf_path)) as pdf:
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    text = page.extract_text() or ""
+                    lines = text.split("\n")
+                    for line in lines:
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        level = len(line) - len(line.lstrip(" ")) // 4
+                        content_type = "heading" if len(stripped) < 100 else "paragraph"
+                        structure.append(
+                            DocumentStructure(
+                                page_number=page_number,
+                                level=level,
+                                heading_text=stripped[:150],
+                                content_type=content_type,
+                            )
+                        )
+        except Exception:
+            pass
+        return structure

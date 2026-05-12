@@ -27,7 +27,7 @@ def main() -> None:
     logging.info('Extrayendo contenido del PDF...')
     pages = extractor.extract(args.pdf_path, poppler_path=args.poppler_path)
     logging.info('Generando CSV de salida...')
-    report_generator.generate(pages, args.csv_path)
+    report_generator.generate(pages, args.csv_path, pdf_path=args.pdf_path)
     logging.info('CSV generado en %s', args.csv_path)
 
 
